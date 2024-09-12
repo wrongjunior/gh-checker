@@ -15,7 +15,7 @@ type Config struct {
 	Database struct {
 		Path string `yaml:"path"`
 	} `yaml:"database"`
-	FollowerUpdateInterval time.Duration `yaml:"follower_update_interval"`
+	FollowerUpdateInterval time.Duration `yaml:"follower_check_interval"` // Изменен ключ
 }
 
 var AppConfig Config
@@ -31,6 +31,9 @@ func LoadConfig(path string) {
 		log.Fatalf("Error parsing config file: %v", err)
 	}
 
-	// Предполагается, что интервал указывается в секундах
-	AppConfig.FollowerUpdateInterval = AppConfig.FollowerUpdateInterval * time.Second
+	if AppConfig.FollowerUpdateInterval == 0 {
+		log.Fatalf("FollowerUpdateInterval cannot be 0 seconds. Please check your config file.")
+	}
+
+	log.Printf("Loaded config with FollowerUpdateInterval: %v seconds", AppConfig.FollowerUpdateInterval.Seconds())
 }
