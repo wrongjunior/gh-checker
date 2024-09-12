@@ -9,13 +9,14 @@ import (
 // UpdateFollowers проверяет, нужно ли обновить подписчиков и обновляет их, если необходимо.
 // Если обновление не требуется, возвращает кэшированные данные.
 func UpdateFollowers(username string, updateInterval time.Duration) ([]string, bool, error) {
-	// Проверяем, нужно ли обновить подписчиков
+	log.Printf("Checking if we should update followers for %s", username)
 	shouldUpdate, err := database.ShouldUpdateFollowers(username, updateInterval)
 	if err != nil {
 		return nil, false, err
 	}
 
 	if !shouldUpdate {
+		log.Printf("No need to update followers for %s. Using cached data.", username)
 		// Возвращаем кэшированные данные
 		followers, err := database.GetFollowers(username)
 		if err != nil {
@@ -24,13 +25,12 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 		return followers, false, nil
 	}
 
-	// Если нужно обновить подписчиков с GitHub
+	log.Printf("Updating followers for %s from GitHub API", username)
 	newFollowers, err := GetFollowers(username)
 	if err != nil {
 		return nil, false, err
 	}
 
-	// Очищаем текущих подписчиков и добавляем новых
 	err = database.ClearFollowers(username)
 	if err != nil {
 		return nil, false, err
@@ -43,11 +43,11 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 		}
 	}
 
-	// Обновляем время последней проверки
 	err = database.UpdateLastChecked(username)
 	if err != nil {
 		return nil, false, err
 	}
 
+	log.Printf("Successfully updated followers for %s", username)
 	return newFollowers, true, nil
 }

@@ -20,6 +20,7 @@ func InitDB(dbPath string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Printf("Initialized database connection to %s", dbPath)
 
 	createTables()
 }
@@ -42,6 +43,7 @@ func createTables() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	log.Println("Created necessary tables if they did not exist")
 }
 
 func AddFollower(username, follower string) error {
@@ -50,11 +52,16 @@ func AddFollower(username, follower string) error {
 
 	stmt, err := DB.Prepare("INSERT OR IGNORE INTO followers(username, follower, last_updated) VALUES(?, ?, ?)")
 	if err != nil {
+		log.Printf("Error preparing statement for adding follower %s -> %s: %v", follower, username, err)
 		return err
 	}
 	defer stmt.Close()
 
 	_, err = stmt.Exec(username, follower, time.Now())
+	if err != nil {
+		log.Printf("Error executing statement for adding follower %s -> %s: %v", follower, username, err)
+	}
+	log.Printf("Added/updated follower %s for user %s", follower, username)
 	return err
 }
 
@@ -65,8 +72,10 @@ func IsFollowing(follower, username string) (bool, error) {
 	var count int
 	err := DB.QueryRow("SELECT COUNT(*) FROM followers WHERE username = ? AND follower = ?", username, follower).Scan(&count)
 	if err != nil {
+		log.Printf("Error checking if follower %s follows %s: %v", follower, username, err)
 		return false, err
 	}
+	log.Printf("Checked if follower %s follows %s: %v", follower, username, count > 0)
 	return count > 0, nil
 }
 
@@ -75,6 +84,11 @@ func UpdateLastChecked(username string) error {
 	defer lock.Unlock()
 
 	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, last_checked) VALUES(?, ?)", username, time.Now())
+	if err != nil {
+		log.Printf("Error updating last checked time for %s: %v", username, err)
+	} else {
+		log.Printf("Updated last checked time for %s", username)
+	}
 	return err
 }
 
@@ -85,13 +99,19 @@ func ShouldUpdateFollowers(username string, updateInterval time.Duration) (bool,
 	var lastChecked time.Time
 	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ?", username).Scan(&lastChecked)
 	if err == sql.ErrNoRows {
-		// Если информации нет в базе, нужно обновить
+		log.Printf("No last checked time found for %s. Update required.", username)
 		return true, nil
 	} else if err != nil {
+		log.Printf("Error checking last checked time for %s: %v", username, err)
 		return false, err
 	}
-	// Проверяем, истек ли интервал обновления
-	return time.Since(lastChecked) > updateInterval, nil
+
+	timeSinceLastCheck := time.Since(lastChecked)
+	log.Printf("Time since last checked for %s: %v", username, timeSinceLastCheck)
+
+	shouldUpdate := timeSinceLastCheck > updateInterval
+	log.Printf("Should update followers for %s: %v", username, shouldUpdate)
+	return shouldUpdate, nil
 }
 
 func GetFollowers(username string) ([]string, error) {
@@ -100,6 +120,7 @@ func GetFollowers(username string) ([]string, error) {
 
 	rows, err := DB.Query("SELECT follower FROM followers WHERE username = ?", username)
 	if err != nil {
+		log.Printf("Error retrieving followers for %s: %v", username, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -108,11 +129,13 @@ func GetFollowers(username string) ([]string, error) {
 	for rows.Next() {
 		var follower string
 		if err := rows.Scan(&follower); err != nil {
+			log.Printf("Error scanning follower for %s: %v", username, err)
 			return nil, err
 		}
 		followers = append(followers, follower)
 	}
 
+	log.Printf("Retrieved %d followers for %s", len(followers), username)
 	return followers, nil
 }
 
@@ -121,5 +144,10 @@ func ClearFollowers(username string) error {
 	defer lock.Unlock()
 
 	_, err := DB.Exec("DELETE FROM followers WHERE username = ?", username)
-	return err
+	if err != nil {
+		log.Printf("Error clearing followers for %s: %v", username, err)
+		return err
+	}
+	log.Printf("Cleared followers for %s", username)
+	return nil
 }
