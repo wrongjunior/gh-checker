@@ -15,11 +15,6 @@ func SetGitHubAPIKey(apiKey string) {
 	githubAPIKey = apiKey
 }
 
-func CheckIfFollowing(follower, followed string) (bool, error) {
-	url := fmt.Sprintf("%s/users/%s/following/%s", githubAPI, follower, followed)
-	return makeGitHubRequest(url)
-}
-
 func GetFollowers(username string) ([]string, error) {
 	url := fmt.Sprintf("%s/users/%s/followers", githubAPI, username)
 
@@ -27,7 +22,11 @@ func GetFollowers(username string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if resp.Body != nil {
+			resp.Body.Close()
+		}
+	}()
 
 	var followers []struct {
 		Login string `json:"login"`
@@ -45,23 +44,6 @@ func GetFollowers(username string) ([]string, error) {
 	return followerNames, nil
 }
 
-func makeGitHubRequest(url string) (bool, error) {
-	resp, err := makeGitHubAPIRequest(url)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNoContent {
-		return true, nil
-	} else if resp.StatusCode == http.StatusNotFound {
-		return false, nil
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		return false, fmt.Errorf("GitHub API error: %s", string(body))
-	}
-}
-
 func makeGitHubAPIRequest(url string) (*http.Response, error) {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
@@ -75,5 +57,16 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 		req.Header.Set("Authorization", "token "+githubAPIKey)
 	}
 
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Проверяем, что GitHub API вернул успешный ответ
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API error: %s", string(body))
+	}
+
+	return resp, nil
 }

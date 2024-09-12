@@ -3,12 +3,16 @@ package database
 import (
 	"database/sql"
 	"log"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var DB *sql.DB
+var (
+	DB   *sql.DB
+	lock sync.Mutex
+)
 
 func InitDB(dbPath string) {
 	var err error
@@ -41,7 +45,10 @@ func createTables() {
 }
 
 func AddFollower(username, follower string) error {
-	stmt, err := DB.Prepare("INSERT OR REPLACE INTO followers(username, follower, last_updated) VALUES(?, ?, ?)")
+	lock.Lock()
+	defer lock.Unlock()
+
+	stmt, err := DB.Prepare("INSERT OR IGNORE INTO followers(username, follower, last_updated) VALUES(?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -52,6 +59,9 @@ func AddFollower(username, follower string) error {
 }
 
 func IsFollowing(follower, username string) (bool, error) {
+	lock.Lock()
+	defer lock.Unlock()
+
 	var count int
 	err := DB.QueryRow("SELECT COUNT(*) FROM followers WHERE username = ? AND follower = ?", username, follower).Scan(&count)
 	if err != nil {
@@ -61,27 +71,33 @@ func IsFollowing(follower, username string) (bool, error) {
 }
 
 func UpdateLastChecked(username string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
 	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, last_checked) VALUES(?, ?)", username, time.Now())
 	return err
 }
 
 func ShouldUpdateFollowers(username string, updateInterval time.Duration) (bool, error) {
+	lock.Lock()
+	defer lock.Unlock()
+
 	var lastChecked time.Time
 	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ?", username).Scan(&lastChecked)
 	if err == sql.ErrNoRows {
+		// Если информации нет в базе, нужно обновить
 		return true, nil
 	} else if err != nil {
 		return false, err
 	}
+	// Проверяем, истек ли интервал обновления
 	return time.Since(lastChecked) > updateInterval, nil
 }
 
-func ClearFollowers(username string) error {
-	_, err := DB.Exec("DELETE FROM followers WHERE username = ?", username)
-	return err
-}
-
 func GetFollowers(username string) ([]string, error) {
+	lock.Lock()
+	defer lock.Unlock()
+
 	rows, err := DB.Query("SELECT follower FROM followers WHERE username = ?", username)
 	if err != nil {
 		return nil, err
@@ -98,4 +114,12 @@ func GetFollowers(username string) ([]string, error) {
 	}
 
 	return followers, nil
+}
+
+func ClearFollowers(username string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	_, err := DB.Exec("DELETE FROM followers WHERE username = ?", username)
+	return err
 }

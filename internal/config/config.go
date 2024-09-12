@@ -31,5 +31,6 @@ func LoadConfig(path string) {
 		log.Fatalf("Error parsing config file: %v", err)
 	}
 
-	AppConfig.FollowerUpdateInterval *= time.Second
+	// Предполагается, что интервал указывается в секундах
+	AppConfig.FollowerUpdateInterval = AppConfig.FollowerUpdateInterval * time.Second
 }
