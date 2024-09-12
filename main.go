@@ -1,13 +1,13 @@
 package main
 
 import (
-	"log"
-	"net/http"
-
 	"gh-checker/internal/config"
 	"gh-checker/internal/database"
 	"gh-checker/internal/handlers"
 	"gh-checker/internal/services"
+	"log"
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -23,8 +23,6 @@ func main() {
 	services.SetGitHubAPIKey(githubAPIKey)
 
 	database.InitDB(config.AppConfig.Database.Path)
-
-	go services.UpdateFollowers(config.AppConfig.FollowerCheckInterval)
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
