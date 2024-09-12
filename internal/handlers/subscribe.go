@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"gh-checker/internal/database"
 	"gh-checker/internal/models"
 	"gh-checker/internal/services"
 	"net/http"
@@ -14,11 +15,26 @@ func SubscribeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Вызываем сервис для проверки подписки
-	isFollowing, err := services.CheckIfFollowing(req.Follower, req.Followed)
+	isFollowing, err := database.IsFollowing(req.Follower, req.Followed)
 	if err != nil {
 		json.NewEncoder(w).Encode(models.SubscribeResponse{Error: err.Error()})
 		return
+	}
+
+	if !isFollowing {
+		isFollowing, err = services.CheckIfFollowing(req.Follower, req.Followed)
+		if err != nil {
+			json.NewEncoder(w).Encode(models.SubscribeResponse{Error: err.Error()})
+			return
+		}
+
+		if isFollowing {
+			err = database.AddFollower(req.Follower, req.Followed)
+			if err != nil {
+				json.NewEncoder(w).Encode(models.SubscribeResponse{Error: err.Error()})
+				return
+			}
+		}
 	}
 
 	json.NewEncoder(w).Encode(models.SubscribeResponse{IsFollowing: isFollowing})
