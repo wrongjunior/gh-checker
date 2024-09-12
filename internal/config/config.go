@@ -10,11 +10,14 @@ type Config struct {
 	GitHub struct {
 		APIKey string `yaml:"api_key"`
 	} `yaml:"github"`
+	Database struct {
+		Path string `yaml:"path"`
+	} `yaml:"database"`
+	FollowerCheckInterval int `yaml:"follower_check_interval"`
 }
 
 var AppConfig Config
 
-// LoadConfig загружает конфигурацию из YAML файла
 func LoadConfig(path string) {
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
