@@ -80,3 +80,22 @@ func ClearFollowers(username string) error {
 	_, err := DB.Exec("DELETE FROM followers WHERE username = ?", username)
 	return err
 }
+
+func GetFollowers(username string) ([]string, error) {
+	rows, err := DB.Query("SELECT follower FROM followers WHERE username = ?", username)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var followers []string
+	for rows.Next() {
+		var follower string
+		if err := rows.Scan(&follower); err != nil {
+			return nil, err
+		}
+		followers = append(followers, follower)
+	}
+
+	return followers, nil
+}

@@ -6,24 +6,27 @@ import (
 	"time"
 )
 
-func UpdateFollowers(username string, updateInterval time.Duration) (bool, error) {
+func UpdateFollowers(username string, updateInterval time.Duration) ([]string, bool, error) {
 	shouldUpdate, err := database.ShouldUpdateFollowers(username, updateInterval)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	if !shouldUpdate {
-		return false, nil // Обновление не требуется
+		// Получаем подписчиков из локальной базы данных
+		followers, err := database.GetFollowers(username)
+		return followers, false, err
 	}
 
+	// Если нужно обновить подписчиков с GitHub
 	followers, err := GetFollowers(username)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	err = database.ClearFollowers(username)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	for _, follower := range followers {
@@ -35,8 +38,8 @@ func UpdateFollowers(username string, updateInterval time.Duration) (bool, error
 
 	err = database.UpdateLastChecked(username)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
-	return true, nil // Обновление выполнено
+	return followers, true, nil
 }

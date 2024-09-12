@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"gh-checker/internal/config"
-	"gh-checker/internal/database"
+	_ "gh-checker/internal/database"
 	"gh-checker/internal/models"
 	"gh-checker/internal/services"
 	"log"
@@ -17,16 +17,18 @@ func SubscribeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := services.UpdateFollowers(req.Followed, config.AppConfig.FollowerUpdateInterval)
+	followers, updated, err := services.UpdateFollowers(req.Followed, config.AppConfig.FollowerUpdateInterval)
 	if err != nil {
 		respondWithError(w, err)
 		return
 	}
 
-	isFollowing, err := database.IsFollowing(req.Follower, req.Followed)
-	if err != nil {
-		respondWithError(w, err)
-		return
+	isFollowing := false
+	for _, follower := range followers {
+		if follower == req.Follower {
+			isFollowing = true
+			break
+		}
 	}
 
 	if updated {
