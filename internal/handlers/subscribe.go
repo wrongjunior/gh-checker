@@ -6,6 +6,7 @@ import (
 	"gh-checker/internal/database"
 	"gh-checker/internal/models"
 	"gh-checker/internal/services"
+	"log"
 	"net/http"
 )
 
@@ -16,7 +17,7 @@ func SubscribeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := services.UpdateFollowers(req.Followed, config.AppConfig.FollowerUpdateInterval)
+	updated, err := services.UpdateFollowers(req.Followed, config.AppConfig.FollowerUpdateInterval)
 	if err != nil {
 		respondWithError(w, err)
 		return
@@ -26,6 +27,12 @@ func SubscribeHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		respondWithError(w, err)
 		return
+	}
+
+	if updated {
+		log.Printf("Updated followers for %s from GitHub API", req.Followed)
+	} else {
+		log.Printf("Used cached followers data for %s", req.Followed)
 	}
 
 	json.NewEncoder(w).Encode(models.SubscribeResponse{IsFollowing: isFollowing})
