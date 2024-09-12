@@ -9,9 +9,3 @@ type SubscribeResponse struct {
 	IsFollowing bool   `json:"isFollowing"`
 	Error       string `json:"error,omitempty"`
 }
-
-type Follower struct {
-	Follower    string
-	Followed    string
-	LastChecked string
-}
