@@ -121,7 +121,7 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 
 // CheckStar проверяет, поставил ли пользователь звезду на репозиторий
 func CheckStar(username, repository string) (bool, error) {
-	url := fmt.Sprintf("%s/user/starred/%s/%s", githubAPI, username, repository)
+	url := fmt.Sprintf("%s/repos/%s/stargazers", githubAPI, repository)
 
 	logger.Info(fmt.Sprintf("Checking if user %s starred repository %s", username, repository))
 	resp, err := makeGitHubAPIRequest(url)
@@ -135,15 +135,28 @@ func CheckStar(username, repository string) (bool, error) {
 		}
 	}()
 
-	if resp.StatusCode == http.StatusNoContent {
-		logger.Info(fmt.Sprintf("User %s has starred repository %s", username, repository))
-		return true, nil
-	} else if resp.StatusCode == http.StatusNotFound {
-		logger.Info(fmt.Sprintf("User %s has not starred repository %s", username, repository))
-		return false, nil
-	} else {
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		logger.Error(fmt.Sprintf("GitHub API error: %s", string(body)), nil)
 		return false, fmt.Errorf("GitHub API error: %s", string(body))
 	}
+
+	var stargazers []struct {
+		Login string `json:"login"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&stargazers); err != nil {
+		logger.Error("Error decoding GitHub API response", err, nil)
+		return false, err
+	}
+
+	for _, stargazer := range stargazers {
+		if stargazer.Login == username {
+			logger.Info(fmt.Sprintf("User %s has starred repository %s", username, repository))
+			return true, nil
+		}
+	}
+
+	logger.Info(fmt.Sprintf("User %s has not starred repository %s", username, repository))
+	return false, nil
 }
