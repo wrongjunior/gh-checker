@@ -118,3 +118,32 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 	logger.Info(fmt.Sprintf("GitHub API request to %s succeeded", url))
 	return resp, nil
 }
+
+// CheckStar проверяет, поставил ли пользователь звезду на репозиторий
+func CheckStar(username, repository string) (bool, error) {
+	url := fmt.Sprintf("%s/user/starred/%s/%s", githubAPI, username, repository)
+
+	logger.Info(fmt.Sprintf("Checking if user %s starred repository %s", username, repository))
+	resp, err := makeGitHubAPIRequest(url)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to check star for user %s on repository %s", username, repository), err, nil)
+		return false, err
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			logger.Error("Error closing response body", err, nil)
+		}
+	}()
+
+	if resp.StatusCode == http.StatusNoContent {
+		logger.Info(fmt.Sprintf("User %s has starred repository %s", username, repository))
+		return true, nil
+	} else if resp.StatusCode == http.StatusNotFound {
+		logger.Info(fmt.Sprintf("User %s has not starred repository %s", username, repository))
+		return false, nil
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		logger.Error(fmt.Sprintf("GitHub API error: %s", string(body)), nil)
+		return false, fmt.Errorf("GitHub API error: %s", string(body))
+	}
+}
