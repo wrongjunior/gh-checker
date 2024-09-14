@@ -46,18 +46,11 @@ func GetFollowers(username string) ([]string, error) {
 
 		if err := json.NewDecoder(resp.Body).Decode(&followers); err != nil {
 			logger.Error(fmt.Sprintf("Error decoding followers from GitHub for %s", username), err)
-			if closeErr := resp.Body.Close(); closeErr != nil { // Обработка ошибки при закрытии
-				logger.Error("Error closing response body after decoding failure", closeErr)
-			}
+			resp.Body.Close() // Закрытие тела ответа при ошибке
 			return nil, err
 		}
-		logger.Info(fmt.Sprintf("Successfully decoded followers from GitHub for %s (page %d)", username, page))
 
-		// Закрываем тело ответа после обработки
-		if err := resp.Body.Close(); err != nil { // Обработка ошибки при закрытии тела ответа
-			logger.Error("Error closing response body", err)
-			return nil, err
-		}
+		resp.Body.Close() // Закрытие тела после успешного получения данных
 
 		// Добавляем новых подписчиков в общий список
 		for _, follower := range followers {
@@ -67,12 +60,12 @@ func GetFollowers(username string) ([]string, error) {
 		// Логируем, сколько подписчиков было обработано на текущей странице
 		logger.Info(fmt.Sprintf("Processed %d followers for %s from GitHub (page %d)", len(followers), username, page))
 
-		// Если количество подписчиков меньше максимального на странице, прекращаем запросы
+		// Если количество подписчиков меньше максимального на странице, значит больше страниц нет
 		if len(followers) < maxFollowersPerPage {
-			logger.Info(fmt.Sprintf("Fetched all followers for user %s", username))
 			break
 		}
 
+		// Увеличиваем номер страницы
 		page++
 	}
 
@@ -121,40 +114,45 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 
 // CheckStar проверяет, поставил ли пользователь звезду на репозиторий
 func CheckStar(username, repository string) (bool, error) {
-	url := fmt.Sprintf("%s/repos/%s/stargazers", githubAPI, repository)
+	page := 1
 
-	logger.Info(fmt.Sprintf("Checking if user %s starred repository %s", username, repository))
-	resp, err := makeGitHubAPIRequest(url)
-	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to check star for user %s on repository %s", username, repository), err, nil)
-		return false, err
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Error("Error closing response body", err, nil)
+	for {
+		url := fmt.Sprintf("%s/repos/%s/stargazers?per_page=%d&page=%d", githubAPI, repository, maxFollowersPerPage, page)
+
+		logger.Info(fmt.Sprintf("Checking if user %s starred repository %s (page %d)", username, repository, page))
+		resp, err := makeGitHubAPIRequest(url)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to check star for user %s on repository %s", username, repository), err)
+			return false, err
 		}
-	}()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		logger.Error(fmt.Sprintf("GitHub API error: %s", string(body)), nil)
-		return false, fmt.Errorf("GitHub API error: %s", string(body))
-	}
-
-	var stargazers []struct {
-		Login string `json:"login"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&stargazers); err != nil {
-		logger.Error("Error decoding GitHub API response", err, nil)
-		return false, err
-	}
-
-	for _, stargazer := range stargazers {
-		if stargazer.Login == username {
-			logger.Info(fmt.Sprintf("User %s has starred repository %s", username, repository))
-			return true, nil
+		var stargazers []struct {
+			Login string `json:"login"`
 		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&stargazers); err != nil {
+			logger.Error(fmt.Sprintf("Error decoding stargazers from GitHub for %s", repository), err)
+			resp.Body.Close() // Закрываем тело ответа при ошибке
+			return false, err
+		}
+
+		resp.Body.Close() // Закрываем тело после успешного получения данных
+
+		// Проверяем, есть ли пользователь среди тех, кто поставил звезду
+		for _, stargazer := range stargazers {
+			if stargazer.Login == username {
+				logger.Info(fmt.Sprintf("User %s has starred repository %s", username, repository))
+				return true, nil
+			}
+		}
+
+		// Если количество "звезд" меньше максимального на странице, значит больше страниц нет
+		if len(stargazers) < maxFollowersPerPage {
+			break
+		}
+
+		// Переход к следующей странице
+		page++
 	}
 
 	logger.Info(fmt.Sprintf("User %s has not starred repository %s", username, repository))
