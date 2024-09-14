@@ -11,11 +11,11 @@ type SubscribeResponse struct {
 }
 
 type StarCheckRequest struct {
-	Username   string `json:"username"`
-	Repository string `json:"repository"`
+	Username   string `json:"username"`   // Пользователь, который ставит звезду
+	Repository string `json:"repository"` // Репозиторий, на который ставится звезда
 }
 
 type StarCheckResponse struct {
-	HasStar bool   `json:"hasStar"`
+	HasStar bool   `json:"hasStar"` // Флаг: есть ли звезда на репозитории
 	Error   string `json:"error,omitempty"`
 }
