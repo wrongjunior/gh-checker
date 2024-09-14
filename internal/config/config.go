@@ -1,11 +1,11 @@
 package config
 
 import (
-	"log"
+	"fmt"
+	"gopkg.in/yaml.v3"
+	"log/slog"
 	"os"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -15,25 +15,36 @@ type Config struct {
 	Database struct {
 		Path string `yaml:"path"`
 	} `yaml:"database"`
-	FollowerUpdateInterval time.Duration `yaml:"follower_check_interval"` // Изменен ключ
+	FollowerUpdateInterval time.Duration `yaml:"follower_check_interval"`
+	Logging                struct {
+		FileLevel    string `yaml:"file_level"`
+		ConsoleLevel string `yaml:"console_level"`
+		FilePath     string `yaml:"file_path"`
+	} `yaml:"logging"`
 }
 
 var AppConfig Config
 
-func LoadConfig(path string) {
+// LoadConfig загружает конфигурацию из файла
+func LoadConfig(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		log.Fatalf("Error reading config file: %v", err)
+		slog.Error("Error reading config file", "error", err)
+		return err
 	}
 
 	err = yaml.Unmarshal(data, &AppConfig)
 	if err != nil {
-		log.Fatalf("Error parsing config file: %v", err)
+		slog.Error("Error parsing config file", "error", err)
+		return err
 	}
 
 	if AppConfig.FollowerUpdateInterval == 0 {
-		log.Fatalf("FollowerUpdateInterval cannot be 0 seconds. Please check your config file.")
+		err = fmt.Errorf("FollowerUpdateInterval cannot be 0 seconds")
+		slog.Error("Invalid FollowerUpdateInterval in config file", "error", err)
+		return err
 	}
 
-	log.Printf("Loaded config with FollowerUpdateInterval: %v seconds", AppConfig.FollowerUpdateInterval.Seconds())
+	slog.Info("Loaded config successfully")
+	return nil
 }
