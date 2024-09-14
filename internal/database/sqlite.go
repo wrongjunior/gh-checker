@@ -2,9 +2,7 @@ package database
 
 import (
 	"database/sql"
-	"fmt"
 	"gh-checker/internal/lib/logger"
-	"strconv"
 	"sync"
 	"time"
 
@@ -45,9 +43,19 @@ func createTables() error {
 		UNIQUE(username, follower)
 	);
 	CREATE TABLE IF NOT EXISTS last_check (
-		username TEXT PRIMARY KEY,
-		last_checked TIMESTAMP
-	);`
+    username TEXT NOT NULL,
+    repository TEXT NOT NULL,
+    last_checked TIMESTAMP,
+    UNIQUE(username, repository)
+	);
+	CREATE TABLE IF NOT EXISTS stars (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT NOT NULL,
+		repository TEXT NOT NULL,
+		last_updated TIMESTAMP,
+		UNIQUE(username, repository)
+	);
+	`
 
 	_, err := DB.Exec(createTableSQL)
 	if err != nil {
@@ -97,18 +105,48 @@ func IsFollowing(follower, username string) (bool, error) {
 	return count > 0, nil
 }
 
-// UpdateLastChecked обновляет время последней проверки подписчиков для username
-func UpdateLastChecked(username string) error {
+// UpdateLastChecked обновляет время последней проверки подписчиков для пользователя
+func UpdateLastChecked(username, recordType string) error {
 	lock.Lock()
 	defer lock.Unlock()
 
-	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, last_checked) VALUES(?, ?)", username, time.Now())
+	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, repository, last_checked) VALUES(?, ?, ?)", username, recordType, time.Now())
 	if err != nil {
-		logger.Error("Error updating last checked time for user", err)
+		logger.Error("Error updating last checked time for user and record type", err)
 		return err
 	}
 
-	logger.Info("Updated last checked time for user " + username)
+	logger.Info("Updated last checked time for user " + username + " and record type " + recordType)
+	return nil
+}
+
+// UpdateLastCheckedFollowers обновляет время последней проверки подписчиков для пользователя
+func UpdateLastCheckedFollowers(username string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, repository, last_checked) VALUES(?, ?, ?)", username, "followers", time.Now())
+	if err != nil {
+		logger.Error("Error updating last checked time for user and followers", err)
+		return err
+	}
+
+	logger.Info("Updated last checked time for user " + username + " for followers")
+	return nil
+}
+
+// UpdateLastCheckedStars обновляет время последней проверки звезд для пользователя и репозитория
+func UpdateLastCheckedStars(username, repository string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, repository, last_checked) VALUES(?, ?, ?)", username, repository, time.Now())
+	if err != nil {
+		logger.Error("Error updating last checked time for user and repository", err)
+		return err
+	}
+
+	logger.Info("Updated last checked time for user " + username + " and repository " + repository)
 	return nil
 }
 
@@ -117,7 +155,7 @@ func ShouldUpdateFollowers(username string, updateInterval time.Duration) (bool,
 	defer lock.RUnlock()
 
 	var lastChecked time.Time
-	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ?", username).Scan(&lastChecked)
+	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ? AND repository = 'followers'", username).Scan(&lastChecked)
 	if err == sql.ErrNoRows {
 		logger.Info("No last checked time found for user " + username + ". Update required.")
 		return true, nil
@@ -127,11 +165,7 @@ func ShouldUpdateFollowers(username string, updateInterval time.Duration) (bool,
 	}
 
 	timeSinceLastCheck := time.Since(lastChecked)
-	logger.Info("Time since last checked for user " + username + ": " + timeSinceLastCheck.String())
-
-	shouldUpdate := timeSinceLastCheck > updateInterval
-	logger.Info(fmt.Sprintf("Should update followers for user %s: %s", username, strconv.FormatBool(shouldUpdate)))
-	return shouldUpdate, nil
+	return timeSinceLastCheck > updateInterval, nil
 }
 
 // GetFollowers возвращает список подписчиков пользователя
@@ -173,4 +207,95 @@ func ClearFollowers(username string) error {
 
 	logger.Info("Cleared followers for user " + username)
 	return nil
+}
+
+// AddStar добавляет информацию о звезде пользователя на репозитории
+func AddStar(username, repository string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	stmt, err := DB.Prepare("INSERT OR IGNORE INTO stars(username, repository, last_updated) VALUES(?, ?, ?)")
+	if err != nil {
+		logger.Error("Error preparing statement for adding star", err)
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(username, repository, time.Now())
+	if err != nil {
+		logger.Error("Error executing statement for adding star", err)
+		return err
+	}
+
+	logger.Info("Added/updated star for user " + username + " on repository " + repository)
+	return nil
+}
+
+// IsStarred проверяет, поставил ли пользователь звезду на репозиторий
+func IsStarred(username, repository string) (bool, error) {
+	lock.RLock()
+	defer lock.RUnlock()
+
+	var count int
+	err := DB.QueryRow("SELECT COUNT(*) FROM stars WHERE username = ? AND repository = ?", username, repository).Scan(&count)
+	if err != nil {
+		logger.Error("Error checking if user starred repository", err)
+		return false, err
+	}
+
+	logger.Info("Checked if user " + username + " starred repository " + repository)
+	return count > 0, nil
+}
+
+// ClearStars удаляет все звезды пользователя на репозитории
+func ClearStars(username string) error {
+	lock.Lock()
+	defer lock.Unlock()
+
+	_, err := DB.Exec("DELETE FROM stars WHERE username = ?", username)
+	if err != nil {
+		logger.Error("Error clearing stars for user", err)
+		return err
+	}
+
+	logger.Info("Cleared stars for user " + username)
+	return nil
+}
+
+// GetLastChecked возвращает время последней проверки для пользователя и репозитория
+func GetLastChecked(username, repository string) (time.Time, error) {
+	lock.RLock()
+	defer lock.RUnlock()
+
+	var lastChecked time.Time
+	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ? AND repository = ?", username, repository).Scan(&lastChecked)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			logger.Info("No last checked time found for user " + username + " and repository " + repository)
+			return time.Time{}, sql.ErrNoRows
+		}
+		logger.Error("Error retrieving last checked time for user and repository", err)
+		return time.Time{}, err
+	}
+
+	logger.Info("Retrieved last checked time for user " + username + " and repository " + repository)
+	return lastChecked, nil
+}
+
+func ShouldUpdateStars(username, repository string, updateInterval time.Duration) (bool, error) {
+	lock.RLock()
+	defer lock.RUnlock()
+
+	var lastChecked time.Time
+	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ? AND repository = ?", username, repository).Scan(&lastChecked)
+	if err == sql.ErrNoRows {
+		logger.Info("No last checked time found for user " + username + " and repository " + repository + ". Update required.")
+		return true, nil
+	} else if err != nil {
+		logger.Error("Error checking last checked time for user and repository", err)
+		return false, err
+	}
+
+	timeSinceLastCheck := time.Since(lastChecked)
+	return timeSinceLastCheck > updateInterval, nil
 }
