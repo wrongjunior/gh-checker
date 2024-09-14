@@ -33,7 +33,7 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 
 	// Обновление подписчиков через GitHub API
 	logger.Info("Updating followers for user " + username + " via GitHub API")
-	newFollowers, err := GetFollowers(username)
+	newFollowers, err := GetFollowers(username) // Здесь должен быть вызов GitHub API
 	if err != nil {
 		logger.Error("Error retrieving followers from GitHub API for user "+username, err)
 		return nil, false, err
@@ -61,7 +61,7 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 
 	// Обновление времени последней проверки подписчиков
 	logger.Info("Updating last checked timestamp for user " + username)
-	err = database.UpdateLastChecked(username)
+	err = database.UpdateLastCheckedFollowers(username) // Используем функцию для подписчиков
 	if err != nil {
 		logger.Error("Error updating last checked timestamp for user "+username, err)
 		return nil, false, err
