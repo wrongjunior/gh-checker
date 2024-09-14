@@ -3,8 +3,8 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"gh-checker/internal/lib/logger"
 	"io"
-	"log"
 	"net/http"
 	"time"
 )
@@ -19,7 +19,7 @@ var githubAPIKey string
 // SetGitHubAPIKey устанавливает API ключ GitHub
 func SetGitHubAPIKey(apiKey string) {
 	githubAPIKey = apiKey
-	log.Println("GitHub API key set")
+	logger.Info("GitHub API key set")
 }
 
 // GetFollowers получает подписчиков пользователя с GitHub API
@@ -30,7 +30,7 @@ func GetFollowers(username string) ([]string, error) {
 	for {
 		url := fmt.Sprintf("%s/users/%s/followers?per_page=%d&page=%d", githubAPI, username, maxFollowersPerPage, page)
 
-		log.Printf("Requesting followers for %s from GitHub API (page %d)", username, page)
+		logger.Info(fmt.Sprintf("Requesting followers for %s from GitHub API (page %d)", username, page))
 		resp, err := makeGitHubAPIRequest(url)
 		if err != nil {
 			return nil, err
@@ -39,7 +39,7 @@ func GetFollowers(username string) ([]string, error) {
 		// Закрываем тело ответа после чтения данных
 		defer func(body io.ReadCloser) {
 			if err := body.Close(); err != nil {
-				log.Printf("Error closing response body: %v", err)
+				logger.Error("Error closing response body", err)
 			}
 		}(resp.Body)
 
@@ -49,7 +49,7 @@ func GetFollowers(username string) ([]string, error) {
 		}
 
 		if err := json.NewDecoder(resp.Body).Decode(&followers); err != nil {
-			log.Printf("Error decoding followers from GitHub for %s: %v", username, err)
+			logger.Error(fmt.Sprintf("Error decoding followers from GitHub for %s", username), err)
 			return nil, err
 		}
 
@@ -66,7 +66,7 @@ func GetFollowers(username string) ([]string, error) {
 		page++
 	}
 
-	log.Printf("Retrieved %d followers for %s from GitHub", len(allFollowers), username)
+	logger.Info(fmt.Sprintf("Retrieved %d followers for %s from GitHub", len(allFollowers), username))
 	return allFollowers, nil
 }
 
@@ -77,7 +77,7 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Printf("Error creating GitHub API request: %v", err)
+		logger.Error("Error creating GitHub API request", err)
 		return nil, err
 	}
 
@@ -89,17 +89,17 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Error making GitHub API request to %s: %v", url, err)
+		logger.Error(fmt.Sprintf("Error making GitHub API request to %s", url), err)
 		return nil, err
 	}
 
 	// Проверяем на ошибки статуса
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		log.Printf("GitHub API error for %s: %s", url, string(body))
+		logger.Error(fmt.Sprintf("GitHub API error for %s", url), fmt.Errorf("%s", string(body)))
 		return nil, fmt.Errorf("GitHub API error: %s", string(body))
 	}
 
-	log.Printf("GitHub API request to %s succeeded", url)
+	logger.Info(fmt.Sprintf("GitHub API request to %s succeeded", url))
 	return resp, nil
 }
