@@ -2,21 +2,21 @@ package services
 
 import (
 	"gh-checker/internal/database"
-	"log"
+	"gh-checker/internal/lib/logger"
 	"time"
 )
 
 // UpdateFollowers проверяет, нужно ли обновить подписчиков и обновляет их, если необходимо.
 // Если обновление не требуется, возвращает кэшированные данные.
 func UpdateFollowers(username string, updateInterval time.Duration) ([]string, bool, error) {
-	log.Printf("Checking if we should update followers for %s", username)
+	logger.Info("Checking if we should update followers for " + username)
 	shouldUpdate, err := database.ShouldUpdateFollowers(username, updateInterval)
 	if err != nil {
 		return nil, false, err
 	}
 
 	if !shouldUpdate {
-		log.Printf("No need to update followers for %s. Using cached data.", username)
+		logger.Info("No need to update followers for " + username + ". Using cached data.")
 		// Возвращаем кэшированные данные
 		followers, err := database.GetFollowers(username)
 		if err != nil {
@@ -25,7 +25,7 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 		return followers, false, nil
 	}
 
-	log.Printf("Updating followers for %s from GitHub API", username)
+	logger.Info("Updating followers for " + username + " from GitHub API")
 	newFollowers, err := GetFollowers(username)
 	if err != nil {
 		return nil, false, err
@@ -39,7 +39,7 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 	for _, follower := range newFollowers {
 		err := database.AddFollower(username, follower)
 		if err != nil {
-			log.Printf("Error adding follower %s -> %s: %v", follower, username, err)
+			logger.Error("Error adding follower "+follower+" -> "+username, err)
 		}
 	}
 
@@ -48,6 +48,6 @@ func UpdateFollowers(username string, updateInterval time.Duration) ([]string, b
 		return nil, false, err
 	}
 
-	log.Printf("Successfully updated followers for %s", username)
+	logger.Info("Successfully updated followers for " + username)
 	return newFollowers, true, nil
 }
