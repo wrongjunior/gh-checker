@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
+	"gh-checker/internal/config"
 	"gh-checker/internal/lib/logger"
 	"gh-checker/internal/models"
 	"gh-checker/internal/services"
@@ -20,11 +20,11 @@ func StarCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Received request to check if %s starred repository %s", req.Username, req.Repository))
+	logger.Info("Received request to check if " + req.Username + " starred repository " + req.Repository)
 
-	hasStar, err := services.CheckStar(req.Username, req.Repository)
+	hasStar, err := services.UpdateStars(req.Username, req.Repository, config.AppConfig.FollowerUpdateInterval)
 	if err != nil {
-		logger.Error("Error while checking star", err)
+		logger.Error("Error while updating stars", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -36,5 +36,5 @@ func StarCheckHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Successfully responded to star check for user %s on repository %s", req.Username, req.Repository))
+	logger.Info("Successfully responded to star check for user " + req.Username + " on repository " + req.Repository)
 }
