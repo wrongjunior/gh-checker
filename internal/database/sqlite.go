@@ -2,7 +2,9 @@ package database
 
 import (
 	"database/sql"
-	"log"
+	"fmt"
+	"gh-checker/internal/lib/logger"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,18 +16,26 @@ var (
 	lock sync.RWMutex // Используем RWMutex для разделения блокировки
 )
 
-func InitDB(dbPath string) {
+// InitDB инициализирует базу данных
+func InitDB(dbPath string) error {
 	var err error
 	DB, err = sql.Open("sqlite3", dbPath)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Failed to open database", err)
+		return err
 	}
-	log.Printf("Initialized database connection to %s", dbPath)
 
-	createTables()
+	logger.Info("Initialized database connection to " + dbPath)
+
+	if err = createTables(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func createTables() {
+// createTables создаёт необходимые таблицы, если они не существуют
+func createTables() error {
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS followers (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,86 +51,97 @@ func createTables() {
 
 	_, err := DB.Exec(createTableSQL)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("Failed to create tables", err)
+		return err
 	}
-	log.Println("Created necessary tables if they did not exist")
+
+	logger.Info("Created necessary tables")
+	return nil
 }
 
+// AddFollower добавляет нового подписчика
 func AddFollower(username, follower string) error {
-	lock.Lock() // Блокируем на запись
+	lock.Lock()
 	defer lock.Unlock()
 
 	stmt, err := DB.Prepare("INSERT OR IGNORE INTO followers(username, follower, last_updated) VALUES(?, ?, ?)")
 	if err != nil {
-		log.Printf("Error preparing statement for adding follower %s -> %s: %v", follower, username, err)
+		logger.Error("Error preparing statement for adding follower", err)
 		return err
 	}
 	defer stmt.Close()
 
 	_, err = stmt.Exec(username, follower, time.Now())
 	if err != nil {
-		log.Printf("Error executing statement for adding follower %s -> %s: %v", follower, username, err)
+		logger.Error("Error executing statement for adding follower", err)
+		return err
 	}
-	log.Printf("Added/updated follower %s for user %s", follower, username)
-	return err
+
+	logger.Info("Added/updated follower " + follower + " for user " + username)
+	return nil
 }
 
+// IsFollowing проверяет, является ли follower подписчиком username
 func IsFollowing(follower, username string) (bool, error) {
-	lock.RLock() // Блокируем на чтение
+	lock.RLock()
 	defer lock.RUnlock()
 
 	var count int
 	err := DB.QueryRow("SELECT COUNT(*) FROM followers WHERE username = ? AND follower = ?", username, follower).Scan(&count)
 	if err != nil {
-		log.Printf("Error checking if follower %s follows %s: %v", follower, username, err)
+		logger.Error("Error checking if follower follows user", err)
 		return false, err
 	}
-	log.Printf("Checked if follower %s follows %s: %v", follower, username, count > 0)
+
+	logger.Info("Checked if follower " + follower + " follows user " + username)
 	return count > 0, nil
 }
 
+// UpdateLastChecked обновляет время последней проверки подписчиков для username
 func UpdateLastChecked(username string) error {
-	lock.Lock() // Блокируем на запись
+	lock.Lock()
 	defer lock.Unlock()
 
 	_, err := DB.Exec("INSERT OR REPLACE INTO last_check(username, last_checked) VALUES(?, ?)", username, time.Now())
 	if err != nil {
-		log.Printf("Error updating last checked time for %s: %v", username, err)
-	} else {
-		log.Printf("Updated last checked time for %s", username)
+		logger.Error("Error updating last checked time for user", err)
+		return err
 	}
-	return err
+
+	logger.Info("Updated last checked time for user " + username)
+	return nil
 }
 
 func ShouldUpdateFollowers(username string, updateInterval time.Duration) (bool, error) {
-	lock.RLock() // Блокируем на чтение
+	lock.RLock()
 	defer lock.RUnlock()
 
 	var lastChecked time.Time
 	err := DB.QueryRow("SELECT last_checked FROM last_check WHERE username = ?", username).Scan(&lastChecked)
 	if err == sql.ErrNoRows {
-		log.Printf("No last checked time found for %s. Update required.", username)
+		logger.Info("No last checked time found for user " + username + ". Update required.")
 		return true, nil
 	} else if err != nil {
-		log.Printf("Error checking last checked time for %s: %v", username, err)
+		logger.Error("Error checking last checked time for user", err)
 		return false, err
 	}
 
 	timeSinceLastCheck := time.Since(lastChecked)
-	log.Printf("Time since last checked for %s: %v", username, timeSinceLastCheck)
+	logger.Info("Time since last checked for user " + username + ": " + timeSinceLastCheck.String())
 
 	shouldUpdate := timeSinceLastCheck > updateInterval
-	log.Printf("Should update followers for %s: %v", username, shouldUpdate)
+	logger.Info(fmt.Sprintf("Should update followers for user %s: %s", username, strconv.FormatBool(shouldUpdate)))
 	return shouldUpdate, nil
 }
 
+// GetFollowers возвращает список подписчиков пользователя
 func GetFollowers(username string) ([]string, error) {
-	lock.RLock() // Блокируем на чтение
+	lock.RLock()
 	defer lock.RUnlock()
 
 	rows, err := DB.Query("SELECT follower FROM followers WHERE username = ?", username)
 	if err != nil {
-		log.Printf("Error retrieving followers for %s: %v", username, err)
+		logger.Error("Error retrieving followers for user", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -129,25 +150,27 @@ func GetFollowers(username string) ([]string, error) {
 	for rows.Next() {
 		var follower string
 		if err := rows.Scan(&follower); err != nil {
-			log.Printf("Error scanning follower for %s: %v", username, err)
+			logger.Error("Error scanning follower for user", err)
 			return nil, err
 		}
 		followers = append(followers, follower)
 	}
 
-	log.Printf("Retrieved %d followers for %s", len(followers), username)
+	logger.Info("Retrieved " + string(len(followers)) + " followers for user " + username)
 	return followers, nil
 }
 
+// ClearFollowers удаляет всех подписчиков пользователя
 func ClearFollowers(username string) error {
-	lock.Lock() // Блокируем на запись
+	lock.Lock()
 	defer lock.Unlock()
 
 	_, err := DB.Exec("DELETE FROM followers WHERE username = ?", username)
 	if err != nil {
-		log.Printf("Error clearing followers for %s: %v", username, err)
+		logger.Error("Error clearing followers for user", err)
 		return err
 	}
-	log.Printf("Cleared followers for %s", username)
+
+	logger.Info("Cleared followers for user " + username)
 	return nil
 }
