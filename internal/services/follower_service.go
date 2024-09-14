@@ -9,45 +9,64 @@ import (
 // UpdateFollowers проверяет, нужно ли обновить подписчиков и обновляет их, если необходимо.
 // Если обновление не требуется, возвращает кэшированные данные.
 func UpdateFollowers(username string, updateInterval time.Duration) ([]string, bool, error) {
-	logger.Info("Checking if we should update followers for " + username)
+	logger.Info("Starting follower update process for user " + username)
+
+	// Проверка необходимости обновления подписчиков
+	logger.Info("Checking if followers need to be updated for user " + username)
 	shouldUpdate, err := database.ShouldUpdateFollowers(username, updateInterval)
 	if err != nil {
+		logger.Error("Error checking if followers need to be updated for user "+username, err)
 		return nil, false, err
 	}
 
 	if !shouldUpdate {
-		logger.Info("No need to update followers for " + username + ". Using cached data.")
+		logger.Info("No update needed for user " + username + ". Retrieving cached followers.")
 		// Возвращаем кэшированные данные
 		followers, err := database.GetFollowers(username)
 		if err != nil {
+			logger.Error("Error retrieving cached followers for user "+username, err)
 			return nil, false, err
 		}
+		logger.Info("Successfully retrieved cached followers for user " + username)
 		return followers, false, nil
 	}
 
-	logger.Info("Updating followers for " + username + " from GitHub API")
+	// Обновление подписчиков через GitHub API
+	logger.Info("Updating followers for user " + username + " via GitHub API")
 	newFollowers, err := GetFollowers(username)
 	if err != nil {
+		logger.Error("Error retrieving followers from GitHub API for user "+username, err)
 		return nil, false, err
 	}
 
+	// Очистка старых подписчиков
+	logger.Info("Clearing old followers for user " + username)
 	err = database.ClearFollowers(username)
 	if err != nil {
+		logger.Error("Error clearing followers for user "+username, err)
 		return nil, false, err
 	}
 
+	// Добавление новых подписчиков в базу данных
+	logger.Info("Adding new followers for user " + username)
 	for _, follower := range newFollowers {
+		logger.Info("Adding follower " + follower + " for user " + username)
 		err := database.AddFollower(username, follower)
 		if err != nil {
 			logger.Error("Error adding follower "+follower+" -> "+username, err)
+		} else {
+			logger.Info("Successfully added follower " + follower + " for user " + username)
 		}
 	}
 
+	// Обновление времени последней проверки подписчиков
+	logger.Info("Updating last checked timestamp for user " + username)
 	err = database.UpdateLastChecked(username)
 	if err != nil {
+		logger.Error("Error updating last checked timestamp for user "+username, err)
 		return nil, false, err
 	}
 
-	logger.Info("Successfully updated followers for " + username)
+	logger.Info("Successfully updated followers for user " + username)
 	return newFollowers, true, nil
 }

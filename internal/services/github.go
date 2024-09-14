@@ -27,21 +27,17 @@ func GetFollowers(username string) ([]string, error) {
 	var allFollowers []string
 	page := 1
 
+	logger.Info("Starting to fetch followers for user " + username)
+
 	for {
 		url := fmt.Sprintf("%s/users/%s/followers?per_page=%d&page=%d", githubAPI, username, maxFollowersPerPage, page)
 
 		logger.Info(fmt.Sprintf("Requesting followers for %s from GitHub API (page %d)", username, page))
 		resp, err := makeGitHubAPIRequest(url)
 		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to get followers for %s (page %d)", username, page), err)
 			return nil, err
 		}
-
-		// Закрываем тело ответа после чтения данных
-		defer func(body io.ReadCloser) {
-			if err := body.Close(); err != nil {
-				logger.Error("Error closing response body", err)
-			}
-		}(resp.Body)
 
 		// Обрабатываем результат запроса
 		var followers []struct {
@@ -50,6 +46,16 @@ func GetFollowers(username string) ([]string, error) {
 
 		if err := json.NewDecoder(resp.Body).Decode(&followers); err != nil {
 			logger.Error(fmt.Sprintf("Error decoding followers from GitHub for %s", username), err)
+			if closeErr := resp.Body.Close(); closeErr != nil { // Обработка ошибки при закрытии
+				logger.Error("Error closing response body after decoding failure", closeErr)
+			}
+			return nil, err
+		}
+		logger.Info(fmt.Sprintf("Successfully decoded followers from GitHub for %s (page %d)", username, page))
+
+		// Закрываем тело ответа после обработки
+		if err := resp.Body.Close(); err != nil { // Обработка ошибки при закрытии тела ответа
+			logger.Error("Error closing response body", err)
 			return nil, err
 		}
 
@@ -58,8 +64,12 @@ func GetFollowers(username string) ([]string, error) {
 			allFollowers = append(allFollowers, follower.Login)
 		}
 
+		// Логируем, сколько подписчиков было обработано на текущей странице
+		logger.Info(fmt.Sprintf("Processed %d followers for %s from GitHub (page %d)", len(followers), username, page))
+
 		// Если количество подписчиков меньше максимального на странице, прекращаем запросы
 		if len(followers) < maxFollowersPerPage {
+			logger.Info(fmt.Sprintf("Fetched all followers for user %s", username))
 			break
 		}
 
@@ -72,6 +82,8 @@ func GetFollowers(username string) ([]string, error) {
 
 // makeGitHubAPIRequest выполняет HTTP-запрос к GitHub API и обрабатывает возможные ошибки
 func makeGitHubAPIRequest(url string) (*http.Response, error) {
+	logger.Info("Making GitHub API request to " + url)
+
 	client := &http.Client{
 		Timeout: 10 * time.Second, // Установка таймаута на запрос
 	}
@@ -97,6 +109,9 @@ func makeGitHubAPIRequest(url string) (*http.Response, error) {
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		logger.Error(fmt.Sprintf("GitHub API error for %s", url), fmt.Errorf("%s", string(body)))
+		if closeErr := resp.Body.Close(); closeErr != nil { // Обработка ошибки при закрытии
+			logger.Error("Error closing response body after API error", closeErr)
+		}
 		return nil, fmt.Errorf("GitHub API error: %s", string(body))
 	}
 
