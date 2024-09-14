@@ -62,6 +62,7 @@ func main() {
 	r.Use(middleware.Logger)
 
 	r.Post("/api/subscribe", handlers.SubscribeHandler)
+	r.Post("/check-star", handlers.StarCheckHandler)
 
 	logger.Info("Server starting on :8080")
 	if err := http.ListenAndServe(":8080", r); err != nil {
