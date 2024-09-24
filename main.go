@@ -61,7 +61,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 
-	r.Post("/api/subscribe", handlers.SubscribeHandler)
+	r.Post("/api/subscribe", handlers.SubscribeHandler) // TODO: сделать на /check-followers
 	r.Post("/check-star", handlers.StarCheckHandler)
 
 	logger.Info("Server starting on :8080")

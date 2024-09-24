@@ -9,6 +9,15 @@ import (
 	"net/http"
 )
 
+// respondWithJSON отвечает клиенту с JSON-ответом и заголовком Content-Type
+func respondWithJSON(w http.ResponseWriter, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		logger.Error("Error encoding JSON response", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+	}
+}
+
 // StarCheckHandler обрабатывает запрос на проверку, поставил ли пользователь звезду на репозиторий
 func StarCheckHandler(w http.ResponseWriter, r *http.Request) {
 	logger.Info("Processing StarCheckHandler request")
@@ -30,11 +39,9 @@ func StarCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := models.StarCheckResponse{HasStar: hasStar}
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		logger.Error("Error encoding response", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+
+	// Устанавливаем заголовок Content-Type и отвечаем клиенту
+	respondWithJSON(w, response)
 
 	logger.Info("Successfully responded to star check for user " + req.Username + " on repository " + req.Repository)
 }

@@ -33,7 +33,7 @@ func GetFollowers(username string) ([]string, error) {
 		url := fmt.Sprintf("%s/users/%s/followers?per_page=%d&page=%d", githubAPI, username, maxFollowersPerPage, page)
 
 		logger.Info(fmt.Sprintf("Requesting followers for %s from GitHub API (page %d)", username, page))
-		resp, err := makeGitHubAPIRequest(url)
+		resp, err := makeGitHubAPIRequestWithRetries(url)
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to get followers for %s (page %d)", username, page), err)
 			return nil, err
@@ -73,12 +73,38 @@ func GetFollowers(username string) ([]string, error) {
 	return allFollowers, nil
 }
 
+// makeGitHubAPIRequest выполняет HTTP-запрос к GitHub API и обрабатывает возможные ошибки с повторными попытками
+func makeGitHubAPIRequestWithRetries(url string) (*http.Response, error) {
+	var resp *http.Response
+	var err error
+	maxAttempts := 3
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		logger.Info(fmt.Sprintf("Attempt %d to make GitHub API request to %s", attempt, url))
+		resp, err = makeGitHubAPIRequest(url)
+		if err == nil {
+			return resp, nil
+		}
+		logger.Error(fmt.Sprintf("Error making GitHub API request to %s (attempt %d)", url, attempt), err)
+
+		// Если последняя попытка, возвращаем ошибку
+		if attempt == maxAttempts {
+			return nil, err
+		}
+
+		// Ждем перед повторной попыткой
+		time.Sleep(2 * time.Second)
+	}
+
+	return nil, err
+}
+
 // makeGitHubAPIRequest выполняет HTTP-запрос к GitHub API и обрабатывает возможные ошибки
 func makeGitHubAPIRequest(url string) (*http.Response, error) {
 	logger.Info("Making GitHub API request to " + url)
 
 	client := &http.Client{
-		Timeout: 10 * time.Second, // Установка таймаута на запрос
+		Timeout: 15 * time.Second, // Увеличенный таймаут на запрос
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -120,7 +146,7 @@ func CheckStar(username, repository string) (bool, error) {
 		url := fmt.Sprintf("%s/repos/%s/stargazers?per_page=%d&page=%d", githubAPI, repository, maxFollowersPerPage, page)
 
 		logger.Info(fmt.Sprintf("Checking if user %s starred repository %s (page %d)", username, repository, page))
-		resp, err := makeGitHubAPIRequest(url)
+		resp, err := makeGitHubAPIRequestWithRetries(url)
 		if err != nil {
 			logger.Error(fmt.Sprintf("Failed to check star for user %s on repository %s", username, repository), err)
 			return false, err

@@ -60,11 +60,9 @@ func SubscribeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := models.SubscribeResponse{IsFollowing: isFollowing}
-	logger.Info("Encoding response to JSON")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		logger.Error("Error while encoding response to JSON", err)
-		respondWithError(w, err)
-		return
-	}
+
+	// Устанавливаем заголовок Content-Type и отвечаем клиенту
+	respondWithJSON(w, response)
+
 	logger.Info("Response successfully sent to the client")
 }
